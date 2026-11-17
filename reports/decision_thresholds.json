@@ -1,0 +1,11 @@
+{
+  "champion": "Gradient boosting",
+  "common_threshold_0_50": 0.5,
+  "common_threshold_weighted_f1": 0.31999999999999995,
+  "training_oof_target_tpr": 0.7485801336831406,
+  "gender_specific_thresholds": {
+    "Female": 0.24500000000000002,
+    "Male": 0.38
+  },
+  "note": "Gender-specific thresholds use gender at decision time and are a post-processing comparison, not an automatic deployment recommendation."
+}

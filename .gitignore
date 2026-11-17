@@ -1,0 +1,22 @@
+# Environments and caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+*.bak
+
+# Raw survey data is never committed (large and not redistributable).
+data/raw/
+
+# FinAccess microdata: check the data-access terms before committing.
+# If redistribution is not allowed, uncomment the two lines below and tell
+# reviewers in the README how to obtain the extract.
+# data/processed/
+# data/sample/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
