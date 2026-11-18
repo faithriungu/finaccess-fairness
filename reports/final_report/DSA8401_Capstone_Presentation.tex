@@ -1,4 +1,3 @@
-
 \documentclass[aspectratio=169,10pt]{beamer}
 
 % =================================================
@@ -118,13 +117,11 @@
 % 5. IMAGE PATHS
 % =================================================
 
-\graphicspath{{
-C:/Users/maken/Documents/Strathmore Graduate Studies/DSA 8401 - Applied Machine Learning in Data Science/Assignments/Capstone Project/finaccess-fairness-capstone/reports/figures/
-}}
+% Relative paths: work when compiled from reports/final_report
+% (or from the repository root), on any computer.
+\graphicspath{{../figures/}{reports/figures/}{./}{reports/final_report/}}
 
-\newcommand{\StrathLogo}{
-C:/Users/maken/Documents/Strathmore Graduate Studies/DSA 8401 - Applied Machine Learning in Data Science/Assignments/Capstone Project/finaccess-fairness-capstone/reports/final_report/Strathmore logo.png
-}
+\newcommand{\StrathLogo}{Strathmore logo.png}
 
 % =================================================
 % 6. FOOTER
@@ -839,29 +836,25 @@ The gap remained and the false-positive rate increased substantially. Threshold 
     width=\linewidth,
     height=5.0cm,
     keepaspectratio
-]{
-C:/Users/maken/Documents/Strathmore Graduate Studies/DSA 8401 - Applied Machine Learning in Data Science/Assignments/Capstone Project/finaccess-fairness-capstone/reports/figures/shap_global_importance.png
-}
+]{shap_global_importance.png}
 
 \column{.40\textwidth}
 
+\textbf{Top predictors}
 \begin{itemize}
-
     \item Age
-
     \item Internet-use frequency
-
     \item Education level
-
-    \item Recent and historical income
-
+    \item Income (recent and highest month)
     \item Identity documentation
-
-    \item Wealth quintile
-
 \end{itemize}
 
-\vspace{.2cm}
+\vspace{.15cm}
+
+\textbf{By gender}\\[2pt]
+{\small Income and household position \emph{lower} women's scores but \emph{raise} men's, so more female bank users fall below the threshold.}
+
+\vspace{.15cm}
 
 {\footnotesize\color{Muted}
 SHAP values describe model contribution, not causal effects.
@@ -903,13 +896,15 @@ SHAP values describe model contribution, not causal effects.
 
 \begin{itemize}
 
-    \item FastAPI prediction endpoints
+    \item FastAPI: predict, batch, health, metadata
 
-    \item Input validation
+    \item Invalid input rejected (HTTP 422)
 
-    \item Batch prediction
+    \item Docker: non-root, read-only, health check
 
-    \item Docker configuration
+    \item Container matches offline predictions
+
+    \item 36 automated tests
 
 \end{itemize}
 
@@ -934,7 +929,7 @@ A technical demonstration of a reproducible prediction workflow, not proof of pr
 \begin{itemize}
 
     \item \textbf{Cross-sectional data:}
-    only one survey round; future performance may change.
+    one survey round; later rounds and independent data are needed.
 
     \item \textbf{Prediction, not causation:}
     feature importance does not establish why people use banks.
@@ -942,11 +937,11 @@ A technical demonstration of a reproducible prediction workflow, not proof of pr
     \item \textbf{Fairness is multidimensional:}
     reducing the recall gap increased false positives.
 
-    \item \textbf{Subgroup variation:}
-    gender averages may conceal county and rural--urban differences.
+    \item \textbf{Gender can be inferred:}
+    other predictors identify gender with AUC 0.91, so excluding it is not enough.
 
-    \item \textbf{External validation:}
-    later survey rounds and independent data are needed.
+    \item \textbf{Subgroup variation:}
+    recall at 0.50 is 49\% for rural women vs 74\% for urban men.
 
     \item \textbf{Responsible use:}
     predictions should not determine individual eligibility or exclusion.
@@ -963,7 +958,7 @@ A technical demonstration of a reproducible prediction workflow, not proof of pr
 
 \begin{block}{Conclusion}
 
-Gradient Boosting provided useful predictive performance, but the fairness audit identified a material gender recall gap. A common threshold adjustment narrowed the gap while increasing false positives.
+Gradient Boosting provided useful predictive performance, but the fairness audit identified a material gender recall gap that excluding gender did not prevent. A common threshold of 0.320 narrowed the gap from 15.6 to 9.1 pp while doubling false positives.
 
 \end{block}
 
@@ -1008,7 +1003,7 @@ Gradient Boosting provided useful predictive performance, but the fairness audit
 
 \vspace{.25cm}
 
-{\Large Questions and discussion}
+{\Large Questions}
 
 
 
