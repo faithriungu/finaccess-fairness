@@ -20,6 +20,9 @@
 \setlength{\parindent}{0pt}
 
 \usepackage{graphicx}
+% Figures live in reports/figures; these paths work whether the report is
+% compiled from reports/final_report or from the repository root.
+\graphicspath{{../figures/}{reports/figures/}{./}}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}
@@ -96,15 +99,16 @@
 \begin{document}
 
 % Title page styled to match the student's previous Strathmore assignment.
+\hypersetup{pageanchor=false}
 \begin{titlepage}
-\thispagestyle{plain}
+\thispagestyle{empty}
 \centering
 \vspace*{0.3in}
 \includegraphics[width=1.45in]{Strathmore logo.png}\par
 \vspace{0.35in}
 {\fontsize{14}{17}\selectfont\color{StrathBlue}\bfseries STRATHMORE UNIVERSITY}\par\vspace{14pt}
 {\fontsize{13}{16}\selectfont Master of Science in Data Science \& Analytics}\par\vspace{14pt}
-{\fontsize{13}{16}\selectfont Strathmore Institute of Mathematical Sciences}\par\vspace{14pt}
+{\fontsize{13}{16}\selectfont School of Computing and Engineering Sciences}\par\vspace{14pt}
 DSA 8401: Applied Machine Learning in Data Science\par\vspace{18pt}
 \textbf{Predicting Traditional Bank Use Among Kenyan Adults}\\[5pt]
 A Machine Learning and Gender-Fairness Analysis\par\vspace{18pt}
@@ -113,6 +117,7 @@ November 2026\par
 \vfill
 \end{titlepage}
 
+\hypersetup{pageanchor=true}
 \setcounter{page}{1}
 
 \begin{summarybox}
@@ -144,7 +149,7 @@ The central problem is that a model with acceptable overall performance may iden
 
 The analysis uses the 2024 FinAccess Household Survey selected extract recorded in the project repository as 20,871 observations and 48 columns. The modelling population is restricted to respondents aged 18 years and above. This produces an adult sample of 19,750; 1,121 respondents below 18 years are excluded. The held-out test set contains 3,942 adults.
 
-The project data manifest identifies the selected extract as \texttt{data/processed/finaccess\_selected.csv}. Survey weights and cluster identifiers are retained for estimation and validation, respectively, but are not supplied as model predictors.
+The project data manifest identifies the selected extract as \path{data/processed/finaccess_selected.csv}. Survey weights and cluster identifiers are retained for estimation and validation, respectively, but are not supplied as model predictors.
 
 \subsection{Target variable}
 
@@ -153,7 +158,8 @@ The binary outcome is \texttt{target\_bank\_account}, derived from the FinAccess
   \item Usage = 1;
   \item Non-usage = 0.
 \end{itemize}
-The precise product scope of the FinAccess \texttt{Traditional\_bank} measure should be checked against the official 2024 questionnaire/codebook before final submission. The project excludes \texttt{target\_formal\_access} and \texttt{mobile\_money\_access} from the predictors because they are other financial-inclusion outcomes and could introduce target leakage.
+
+In the FinAccess 2024 data, \texttt{Traditional\_bank} records use of commercial bank products and excludes mobile-based bank products such as M-Shwari and KCB M-Pesa, so the outcome measures use of the traditional banking system rather than mobile-enabled banking.
 
 \subsection{Predictors and sensitive attribute}
 
@@ -191,6 +197,17 @@ Overall performance is reported using PR-AUC, ROC-AUC, precision, recall (true-p
 \subsection{Threshold comparison}
 
 The model produces predicted probabilities; a threshold converts these into predicted classes. Three rules are compared on the held-out test set: a common threshold of 0.50, a common threshold of 0.320 selected by maximising weighted F1 on training out-of-fold predictions, and gender-specific thresholds of 0.245 for women and 0.380 for men. The gender-specific thresholds are a comparison only; the final model package uses the common threshold of 0.320.
+
+\subsection{Alternatives considered and excluded}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Stacking:} the three models were within one fold standard deviation of each other, leaving little for a meta-learner to gain, at the cost of extra complexity and harder explanations.
+  \item \textbf{Deep learning:} the data are small and tabular; tree ensembles typically perform as well with less tuning and support exact TreeSHAP.
+  \item \textbf{SMOTE and class weighting:} the imbalance is moderate (about 30\% positive); threshold adjustment handles it without distorting calibrated probabilities.
+  \item \textbf{Fairness-constrained training:} post-processing was preferred because it keeps scores calibrated and makes the trade-off explicit; in-processing is left for future work.
+  \item \textbf{Demographic parity:} bank use genuinely differs by gender, so equal selection rates would conflict with calibration; equal opportunity (equal TPR) was used instead.
+\end{itemize}
+
 
 \section{Results}
 
@@ -264,6 +281,21 @@ ROC-AUC & 0.880 & 0.853\\
 
 The segment results also show variation by location. At the 0.50 threshold, recall was 0.493 for rural women and 0.558 for rural men. In urban areas, recall was 0.536 for women and 0.742 for men. These subgroup results suggest that an aggregate gender comparison can conceal further variation across location.
 
+\subsection{Gender information in other predictors}
+
+Gender is excluded from the model inputs, but other predictors may still carry gender information. To measure this, a classifier with the same architecture and hyperparameters as the final model was trained to predict respondent gender from the 35 predictors, using the training clusters only, and evaluated on the held-out test set. The predictors identified gender with a weighted ROC-AUC of 0.906. Removing relationship to household head reduced this to 0.851, and removing all four household-role variables (relationship to household head, marital status, and the two household spending-decision variables) reduced it to 0.772. Relationship to household head was the strongest single predictor of gender (ROC-AUC 0.756). Excluding gender from the inputs therefore does not make the model gender-blind.
+
+\subsection{Calibration}
+
+The predicted probabilities were well calibrated overall: the weighted expected calibration error (ECE) was 0.019 on the test set. Calibration was slightly weaker for men (ECE 0.038) than for women (ECE 0.027); the mean predicted probability for men was 0.359 against an observed bank-use rate of 0.380, a small under-prediction. Because the model is reasonably calibrated within each gender, no recalibration step was applied. Calibration within groups is also why demographic parity was not adopted as the fairness target: with bank use genuinely higher among men (0.380) than women (0.234), equal selection rates would require deliberately miscalibrated predictions.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.55\textwidth]{calibration_by_gender.png}
+\caption{Reliability diagram by gender on the held-out test set. Points close to the diagonal indicate well-calibrated predicted probabilities.}
+\label{fig:calibration}
+\end{figure}
+
 \subsection{Threshold mitigation and trade-offs}
 
 Table~\ref{tab:threshold} compares the three threshold rules. Moving from 0.50 to the common 0.320 threshold increased weighted F1 from 0.668 to 0.690 and reduced the TPR gap from 15.6 to 9.1 percentage points. However, the weighted FPR increased from 0.097 to 0.191. The confidence interval for the remaining TPR gap at 0.320 was 2.2--15.5 percentage points, so the observed disparity was not eliminated.
@@ -288,7 +320,7 @@ Gender-specific (0.245 / 0.380) & 0.691 & 0.806 & 0.754 & -0.052\\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.82\textwidth]{reports/figures/threshold_sweep_test.png}
+\includegraphics[width=0.82\textwidth]{threshold_sweep_test.png}
 \caption{Test-set threshold sweep. This figure is descriptive; threshold selection was performed using training out-of-fold predictions.}
 \label{fig:threshold}
 \end{figure}
@@ -299,14 +331,16 @@ TreeSHAP was used to examine the contribution of predictors to the fitted Gradie
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.82\textwidth]{reports/figures/shap_global_importance.png}
+\includegraphics[width=0.82\textwidth]{shap_global_importance.png}
 \caption{Global SHAP feature importance for the fitted model.}
 \label{fig:shap}
 \end{figure}
 
+Comparing SHAP values by gender helps explain the recall gap. The same predictors matter for women and men, but several push predictions in opposite directions. Income in the last month lowered women's scores on average (mean SHAP $-0.052$) and raised men's ($+0.112$); highest monthly income followed the same pattern ($-0.033$ and $+0.113$). Relationship to household head also lowered women's scores ($-0.073$) and raised men's ($+0.076$). Lower personal income and household position therefore hold down women's predicted probabilities, so more women who do use banks fall below the threshold. At the deployed 0.320 threshold, the held-out test set contains 284 false negatives (bank users predicted as non-users) and 479 false positives.
+
 \section{Deployment artefact}
 
-The repository includes a packaged model and prediction interface. The package stores the fitted estimator, feature schema, threshold and metadata. A FastAPI service exposes health, metadata and prediction endpoints, including batch prediction. The project also includes Docker configuration and automated tests. This is a reproducible deployment demonstration; it is not evidence that the model is ready to make or determine individual financial-service eligibility decisions in production.
+The trained model is packaged with its decision threshold (0.320), input schema and metadata, and served through a FastAPI service with prediction, batch-prediction, health and metadata endpoints. Invalid inputs are rejected (HTTP 422), gender is not an accepted input, and each prediction returns its probability, decision and the three largest SHAP contributions as reason codes. The service runs in a Docker container (non-root, read-only, with a health check) that reproduces the offline model's predictions exactly, and 36 automated tests cover the pipeline, model package and API. This is a reproducible demonstration, not a system ready for individual financial-service decisions.
 
 \section{Limitations}
 
@@ -314,11 +348,10 @@ The findings should be interpreted in light of the following limitations:
 \begin{enumerate}[leftmargin=*]
   \item \textbf{Single survey round:} the analysis uses one cross-sectional survey round. Performance and relationships may change in later years or under different economic conditions.
   \item \textbf{Predictive, not causal:} the models identify patterns associated with traditional bank use and cannot establish causal effects.
-  \item \textbf{Residual proxy information:} excluding gender from model inputs does not remove gender-associated information that may be represented by other predictors.
+  \item \textbf{Residual proxy information:} excluding gender from model inputs does not remove gender information. The other predictors identify respondent gender with a test ROC-AUC of 0.906, mainly through household-role variables.
   \item \textbf{Metric trade-offs:} reducing the TPR gap through threshold adjustment increased the false-positive rate. Fairness cannot be summarised by one metric.
   \item \textbf{Subgroup uncertainty:} estimates for smaller gender-by-location groups are less precise and should be interpreted cautiously.
   \item \textbf{External validation:} the repository reports a cluster-held-out test evaluation, but does not establish performance on an independent survey or future population.
-  \item \textbf{Product definition:} the precise scope of the \texttt{Traditional\_bank} survey variable should be confirmed against the official FinAccess 2024 documentation before the report is submitted.
 \end{enumerate}
 
 
@@ -326,89 +359,24 @@ The findings should be interpreted in light of the following limitations:
 
 \subsection{Conclusion}
 
-This study set out to develop a machine learning model for predicting traditional bank use among Kenyan adults and to examine whether its predictions differ systematically between women and men. The findings demonstrate that machine learning can provide useful predictive information about traditional bank use, but that overall model performance alone is insufficient for evaluating the quality and reliability of such predictions.
+This project shows that traditional bank use among Kenyan adults can be predicted usefully from survey characteristics, but that overall performance alone does not show whether a model works equally well for everyone.
 
-Among the three models evaluated, Gradient Boosting achieved the highest mean survey-weighted PR-AUC of 0.712 during cross-validation. Its performance on the held-out test set was also encouraging, with
-a weighted PR-AUC of 0.753 and ROC-AUC of 0.871. However, its performance advantage over Random Forest was relatively small. The results therefore support Gradient Boosting as the preferred model within this experiment, rather than establishing it as universally superior.
+Gradient Boosting was the strongest of the three learning models in cross-validation (weighted PR-AUC 0.712), though its lead over Random Forest was small. On the held-out test set it achieved a weighted PR-AUC of 0.753 and ROC-AUC of 0.871.
 
-More importantly, the fairness evaluation revealed a substantial difference in prediction outcomes between women and men. At the default threshold of 0.50, the model recall for women was 51.9\%,
-compared with 67.5\% for men. This represents a 15.6 percentage-point gap, indicating that the model was less likely to correctly identify women who reported using traditional bank services. Excluding gender
-from the predictor variables did not prevent this disparity, highlighting that other characteristics can retain gender-associated patterns.
+The model was markedly less reliable for women. At the 0.50 threshold, it correctly identified 51.9\% of women who use banks, compared with 67.5\% of men: a gap of 15.6 percentage points. Gender was not a model input, yet the other predictors identified gender with a ROC-AUC of 0.906, so excluding gender did not prevent the disparity.
 
-The threshold analysis further demonstrated that fairness
-interventions involve important trade-offs. Reducing the common
-classification threshold to 0.320 increased weighted F1 from 0.668
-to 0.690 and narrowed the gender recall gap from 15.6 to 9.1
-percentage points. However, the weighted false-positive rate also
-increased from 9.7\% to 19.1\%. The intervention therefore improved
-one dimension of fairness and overall classification performance,
-but did not eliminate the disparity or improve every error measure.
+Lowering the common threshold to 0.320 narrowed the gap to 9.1 percentage points and raised weighted F1 from 0.668 to 0.690, but nearly doubled the false-positive rate, from 9.7\% to 19.1\%. Threshold adjustment reduced the disparity without removing it.
 
-Overall, the study establishes that predictive performance and
-fairness must be evaluated together when developing machine learning
-models using financial inclusion data. A model may achieve strong
-aggregate performance while still producing unequal outcomes across
-population groups. The findings provide evidence for the importance
-of gender-disaggregated evaluation and transparent threshold
-selection in the analysis of financial inclusion in Kenya.
+Predictive performance and fairness must therefore be evaluated together. A model can perform well overall while serving some groups less well, and gender-disaggregated evaluation is needed to see this.
 
 \subsection{Recommendations}
 
-Based on the findings, the following recommendations are proposed:
-
 \begin{enumerate}
-
-\item \textbf{Adopt group-disaggregated model evaluation.}
-
-Financial inclusion prediction models should not be assessed using
-aggregate accuracy or AUC alone. Evaluation should routinely report
-recall, false-negative rates, false-positive rates, precision and
-selection rates separately for women and men. Where sample sizes
-permit, further analysis should consider intersecting characteristics
-such as gender and location. This would help identify groups for whom
-model predictions are less reliable.
-
-\item \textbf{Treat threshold selection as an explicit policy decision.}
-
-The results show that the default threshold of 0.50 does not provide
-the best balance between predictive performance and gender recall
-parity in this experiment. The common threshold of 0.320 offers a
-better balance on the evaluated measures, but its higher false-positive
-rate must be considered. Any future use of the model should therefore
-document the rationale for the selected threshold and assess the
-consequences of both false-positive and false-negative predictions.
-
-\item \textbf{Undertake further validation before operational use.}
-
-Although cluster-aware validation and a held-out test set were used,
-the model was developed using one survey round. Future work should
-evaluate its performance using subsequent FinAccess survey rounds
-and, where possible, independent data. This would establish whether
-the observed predictive relationships and gender disparities remain
-consistent over time and across different populations.
-
-\item \textbf{Investigate the underlying drivers of gender disparities.}
-
-The observed recall gap warrants further investigation beyond
-algorithmic adjustments. Future analysis should examine how
-characteristics such as income, education, identity documentation,
-digital access and geographical location relate to differences in
-prediction outcomes. SHAP explanations can support this investigation,
-but should be interpreted as model explanations rather than evidence
-of causal relationships.
-
-\item \textbf{Use the model as an analytical support tool, not an
-individual eligibility mechanism.}
-
-The current model is a predictive research artefact and has not
-been validated for determining individual access to financial
-services. Financial institutions and policymakers should not use
-its predictions as a substitute for appropriate eligibility
-assessments or as a basis for excluding individuals from financial
-products. Any future application would require independent
-validation, appropriate governance, transparency and continuous
-fairness monitoring.
-
+  \item \textbf{Report performance by group.} Evaluate financial-inclusion models separately for women and men, and where samples allow, by location, using recall, FNR, FPR, precision and selection rate, not aggregate AUC alone.
+  \item \textbf{Treat the threshold as a policy choice.} The 0.320 threshold balanced F1 and the recall gap better than 0.50, at the cost of more false positives. Any use of the model should state why a threshold was chosen and weigh the costs of both error types.
+  \item \textbf{Validate before operational use.} Test the model on later FinAccess rounds and independent data to confirm that its performance and gender gaps hold over time.
+  \item \textbf{Investigate the drivers of the gap.} SHAP points to income and household position as sources of lower scores for women; these should be examined further, as model explanations rather than causes.
+  \item \textbf{Use the model for analysis, not eligibility.} The model is a research artefact and should not determine individual access to financial services without independent validation, governance and fairness monitoring.
 \end{enumerate}
 
 \subsection{Areas for future research}
@@ -418,7 +386,7 @@ FinAccess survey rounds to examine changes in traditional bank use
 over time. Further investigation could also explore intersectional
 fairness across gender, county and rural urban residence, subject
 to adequate subgroup sample sizes. Finally, alternative fairness
-interventions and calibration approaches could be compared to
+interventions, including fairness-constrained (in-processing) training, and calibration approaches could be compared to
 determine whether disparities can be reduced without introducing
 unacceptable increases in classification errors.
 
