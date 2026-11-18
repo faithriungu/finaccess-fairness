@@ -8,9 +8,6 @@
 
 ## 1. Project Overview
 
-**Final report:** [`reports/final_report/DSA8401_Final_Report.pdf`](reports/final_report/DSA8401_Final_Report.pdf)
-**Presentation slides:** [`reports/final_report/DSA8401_Capstone_Presentation.pdf`](reports/final_report/DSA8401_Capstone_Presentation.pdf)
-
 Financial inclusion in Kenya has expanded considerably over the years, supported by the growth of mobile money and digital financial services. However, access to financial services does not necessarily translate into the use of traditional banking products.
 
 This project applies machine learning to predict traditional bank use among Kenyan adults using data from the **2024 FinAccess Household Survey**. In addition to evaluating predictive performance, it examines whether the selected model performs differently for women and men.
