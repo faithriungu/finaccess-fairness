@@ -1,0 +1,4 @@
+predictor_set,n_predictors,gender_AUC_weighted,gender_AUC_unweighted
+All 35 predictors,35,0.9055236368409799,0.9159611288075515
+Without relationship_to_hh_head,34,0.850998684502056,0.8499762059096833
+Without all household-role variables,31,0.7716167142664024,0.7728971392743

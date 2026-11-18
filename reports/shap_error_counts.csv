@@ -1,2 +1,2 @@
 threshold,test_observations,false_negatives,false_positives,true_positives,true_negatives
-0.5,3942,436,235,599,2672
+0.32,3942,284,479,751,2428
