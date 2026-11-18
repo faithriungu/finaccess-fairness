@@ -1,54 +1,91 @@
-# Technique justification
+# Techniques used in the project
 
-The capstone brief asks why each technique was chosen **and** why plausible
-alternatives were left out. This file covers both. Individual data and design
-decisions are logged in `DECISIONS.md`.
+This project uses machine learning to predict traditional bank use among Kenyan adults and to examine whether prediction performance differs between women and men.
 
-## The problem shapes the method
+The data are survey-based, with numeric and categorical variables, missing responses, unequal survey weights and respondents grouped in survey clusters. The methods were selected to suit these features of the data and the project's research objective.
 
-- **Tabular survey data.** 19,750 adults and 35 mixed numeric and categorical predictors. No images, text or sequences.
-- **Moderate imbalance.** About 30% of adults use a bank (weighted).
-- **Complex survey design.** Respondents are clustered in enumeration areas and carry unequal sampling weights.
-- **Real-world messiness.** Skip patterns and `#NULL!` codes, impossible income pairs, and missing education values.
-- **A fairness question.** Does the model work equally well for women and men?
+## 1. Models compared
 
-That points to classical supervised learning with honest validation, subgroup
-evaluation and explainability. It does not point to more complex models.
+Four models were used:
 
-## What was used, and why
+- **Dummy classifier:** provides a simple baseline. It shows how the model performs compared with a prediction that does not learn relationships from the respondent characteristics.
+- **Logistic Regression:** provides a familiar statistical baseline and is relatively easy to interpret.
+- **Random Forest:** can capture non-linear relationships and interactions between variables.
+- **Gradient Boosting:** builds trees in sequence, with each stage improving on earlier predictions. It performed best on the project's main model-selection measure.
 
-| Technique | Why it fits |
-| --- | --- |
-| **Model ladder: dummy → logistic regression → random forest → gradient boosting** | Each rung must beat the one below. The dummy sets the chance PR-AUC (0.286), so gains are judged against no skill, not against zero. |
-| **Gradient boosting (sklearn `HistGradientBoostingClassifier`)** | Strong default for tabular data; captures nonlinearities and interactions; best mean PR-AUC and best Brier score. See `DECISIONS.md` D10 for why its narrow lead is treated with caution. |
-| **Nested CV that keeps clusters together** | Inner folds tune, outer folds estimate, and the test set is used once. Keeping clusters together prevents neighbours from sharing information across splits. |
-| **Fold-internal preprocessing (`Pipeline` + `ColumnTransformer`)** | Imputers and encoders are fitted on training folds only, so no information leaks from validation data. |
-| **Survey-weighted fitting and metrics** | Results describe Kenyan adults, not just the sample. Unweighted results are shown too. |
-| **PR-AUC as the headline metric; ROC-AUC, Brier score and reliability diagram as diagnostics** | PR-AUC focuses on the minority positive class; the diagnostics check ranking and calibration. |
-| **Cluster bootstrap CIs (1,000 resamples)** | Gender gaps carry uncertainty; resampling whole clusters respects the survey design. |
-| **Equal opportunity (TPR gap) as the fairness criterion** | Asks whether actual bank users are found equally often among women and men. It is compatible with calibration when base rates differ (D12). |
-| **Post-processing thresholds** | Fairness levers that don't require retraining. Comparing common and gender-specific thresholds shows the trade-off openly. |
-| **TreeSHAP** | Exact, fast attributions for tree models. Used globally, by gender, and on errors to explain *why* recall differs, not only *that* it differs. |
-| **Model package + batch prediction + `pytest`** | One versioned artefact (model, threshold, schema, metadata) with a reload check and contract tests, so that what was evaluated is exactly what gets served. |
+Gradient Boosting was selected because it had the highest mean survey-weighted PR-AUC across the outer cross-validation folds. Its lead over Random Forest and Logistic Regression was small compared with the variation across folds, so the result is not presented as a large or statistically established advantage.
 
-## What was considered and left out
+## 2. Validation and preprocessing
 
-**Stacking.** Logistic regression, random forest and gradient boosting are within one fold-SD of each other (0.694 / 0.703 / 0.712 ± ~0.03). Stacking pays off when base models make different errors; here their gains are small and overlapping, so a meta-learner has little to combine. It would also add a second training layer, multiply serving cost, and make SHAP attributions harder to interpret. Not worth the operational cost.
+**Cluster-based nested cross-validation** was used to compare models and tune them. Respondents from the same survey cluster were kept together during splitting. This reduces the risk of the model being tested on respondents from clusters it has already seen during training.
 
-**Deep learning (MLP, entity embeddings).** On small-to-medium tabular data, tree ensembles usually match or beat neural networks with far less tuning. An MLP would need scaling, embedding choices for 47 counties and other high-cardinality categories, and careful regularisation. It would also lose exact TreeSHAP. Nothing in the data (no images, text or sequences) needs representation learning.
+A separate cluster-held-out test set was reserved for final evaluation. It was not used to choose the model or its decision threshold.
 
-**XGBoost / LightGBM.** sklearn's histogram gradient boosting uses the same algorithm family, works with survey sample weights inside an sklearn `Pipeline`, and adds no dependency to the API container. The expected difference in accuracy is small compared with the fold-to-fold variation seen here.
+Preprocessing was placed inside the modelling pipeline. This means that imputers and encoders are fitted using the training portion of each split, rather than using information from the validation or test data.
 
-**SVM, k-NN.** Neither gives well-calibrated probabilities out of the box, and both scale poorly with many one-hot categorical columns. Calibrated probabilities matter here because the decision threshold is applied to them.
+Survey weights were used in model fitting and weighted evaluation. Unweighted results were also retained to show how the model performed on the analysed sample.
 
-**SMOTE and class weights.** The imbalance is moderate (about 30% positive), not extreme. The course's recommended order of remedies is threshold moving, then class weights, then SMOTE. Threshold moving is enough here and keeps probabilities calibrated. Class weights and SMOTE both distort predicted probabilities and would require recalibration, and SMOTE would generate synthetic "respondents" whose survey weights mean nothing.
+## 3. Performance measures
 
-**Recalibration (Platt / isotonic).** Not applied, because the model is already well calibrated on the locked test set: weighted ECE is 0.019 overall, 0.027 for women and 0.038 for men (`reports/test_calibration_summary.csv`). Adding a calibrator would need its own held-out data and add complexity for little gain.
+Weighted PR-AUC was the main measure used to rank models. It focuses on the model's ability to identify the positive class, which in this study is adults who use traditional banks.
 
-**Fairness-constrained training (e.g. fairlearn `ExponentiatedGradient`).** Possible, but it builds the fairness constraint into the model and usually needs the sensitive attribute during training. Post-processing was preferred because it leaves the calibrated scores unchanged and makes the accuracy-fairness trade-off visible and easy to adjust. In-processing is listed as future work for comparison.
+Other measures were reported to give a fuller picture:
 
-**Demographic parity.** Rejected as the fairness target, because actual bank use differs by gender (23% vs 38%). Equal selection rates would require deliberately mislabelling people, and would conflict with calibration (D12). The selection-rate gap is still reported.
+- **ROC-AUC:** how well the model ranks bank users above non-users across possible thresholds.
+- **Precision:** how many respondents classified as bank users are actual bank users.
+- **Recall / TPR:** how many actual bank users the model correctly identifies.
+- **F1-score:** combines precision and recall.
+- **Brier score and calibration results:** assess how close predicted probabilities are to observed outcomes.
 
-**Unsupervised methods (clustering, PCA).** The task has a clear label. PCA would make SHAP explanations unreadable in terms of original survey questions.
+The dummy classifier provides a baseline for interpreting the PR-AUC results.
 
-**Drift monitoring (Evidently AI), MLflow, CI/CD.** FinAccess 2024 is a single cross-sectional survey round, so there is no time dimension to monitor drift over until the next round. Experiments are tracked through versioned outputs in `reports/`, the data hashes in the model package, and the decision log. These tools would be the natural next step for a deployed service, but would add infrastructure without new evidence for this project.
+## 4. Fairness assessment
+
+The main fairness comparison is the difference in recall (TPR) between women and men. This asks whether the model identifies actual bank users at similar rates in the two groups.
+
+The analysis also reports false negative rates, false positive rates, selection rates, precision and calibration by gender. Cluster-bootstrap confidence intervals are used to show uncertainty around group differences.
+
+The project does not rely on a single fairness measure. Actual bank-use rates differ between women and men, so equal selection rates alone would not describe whether the model identifies actual bank users equally well. The different measures are reported together to make the trade-offs visible.
+
+Gender is not included as a predictor in the main model. This does not guarantee that the model is free from gender-related patterns, because other respondent characteristics may be associated with gender. The group-based evaluation is therefore an important part of the study.
+
+## 5. Threshold comparison
+
+The model produces probabilities. A threshold is needed to convert those probabilities into a classification of bank user or non-user.
+
+Three approaches were compared:
+
+1. A common threshold of 0.50.
+2. A common threshold of 0.320, selected using training out-of-fold predictions.
+3. Separate thresholds for women and men, used as a fairness comparison.
+
+The common 0.320 threshold improved weighted F1 and reduced the observed TPR gap compared with 0.50. Gender-specific thresholds brought the group TPRs closer in the test results, but they require gender to be used at decision time. The final model package therefore uses the common 0.320 threshold.
+
+Threshold adjustment changes the final classification rule; it does not change the model's underlying predicted probabilities.
+
+## 6. Explainability
+
+TreeSHAP was used because the selected model is tree-based. It provides feature contributions for individual predictions and summary measures across groups.
+
+The project uses SHAP to examine overall feature importance, compare patterns for women and men, and inspect selected false-positive and false-negative predictions.
+
+These explanations describe how the model arrived at its predictions. They should not be interpreted as evidence that a feature causes traditional bank use.
+
+## 7. Techniques not used
+
+A number of other methods were considered but were not needed for the main project.
+
+- **Stacking:** the three machine-learning models performed relatively similarly. Combining them would add complexity without a clear expected improvement.
+- **Deep learning:** the dataset is structured survey data with a moderate sample size. A neural network would require additional tuning and would make interpretation more difficult.
+- **XGBoost and LightGBM:** another boosting library was not necessary to answer the research question. The selected scikit-learn model provided a suitable comparison and fitted the existing pipeline.
+- **SVM and k-nearest neighbours:** these were not prioritised because the project needs useful probability estimates and contains many encoded categorical variables.
+- **SMOTE:** the positive class is not so rare that synthetic observations are an obvious requirement. Synthetic records would also be difficult to reconcile with the survey weights. Threshold adjustment was tested instead.
+- **Fairness-constrained training:** the project uses post-processing thresholds to compare the performance-fairness trade-off without retraining the model under a fairness constraint. In-processing methods could be examined in future work.
+- **Unsupervised learning:** the study has a defined outcome to predict, so supervised classification is the more direct approach.
+- **Drift monitoring and experiment-management platforms:** the dataset contains one survey round. These tools may be useful if the model is maintained over time, but they were not needed to answer the current research question.
+
+## 8. Summary
+
+The project uses established classification methods, cluster-aware validation, survey-weighted evaluation, gender-disaggregated fairness measures, threshold comparison and SHAP explanations.
+
+The emphasis is on a model that can be evaluated carefully and explained clearly, rather than using the largest possible number of algorithms.

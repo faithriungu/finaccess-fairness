@@ -1,273 +1,1107 @@
-# Predicting traditional bank use among Kenyan adults, with a gender-fairness audit
 
-**DSA 8401 Applied Machine Learning - Capstone Project**, Strathmore University (iLabAfrica)
-Author: Faith Makena Riungu
+# Predicting Traditional Bank Use Among Kenyan Adults: A Machine Learning and Gender-Fairness Analysis
 
-## Overview
+**DSA 8401 – Applied Machine Learning Capstone Project**  
+**Strathmore University**
 
-Kenya's formal financial inclusion is high, but women remain much less likely
-than men to use a traditional bank. This project builds an end-to-end machine
-learning system that predicts whether an adult uses a traditional (commercial)
-bank, using the **2024 FinAccess Household Survey**. It then asks whether the
-model is equally reliable for women and men.
+**Author:** Faith Makena Riungu
 
-| | |
-| --- | --- |
-| **Task** | Binary classification: traditional bank use (1) vs non-use (0) |
-| **Data** | FinAccess 2024, 19,750 adults (18+), 35 predictors, 1,849 survey clusters |
-| **Champion** | Gradient boosting, chosen by nested cluster-aware CV (weighted PR-AUC) |
-| **Test result** | Weighted PR-AUC 0.753 (chance 0.304), ROC-AUC 0.871, Brier 0.131 |
-| **Fairness finding** | At the 0.50 threshold, recall is 52% for women vs 67% for men (gap +15.6 pp, 95% CI 7.2-23.1). At the deployed 0.320 threshold, the gap narrows to +9.1 pp (2.2-15.5). |
+## 1. Project Overview
 
-Gender is **not** a model input. It is used only to evaluate the model by group.
+Financial inclusion in Kenya has expanded considerably over the years, supported by the growth of mobile money and digital financial services. However, access to financial services does not necessarily translate into the use of traditional banking products.
 
-## Architecture
+This project applies machine learning to predict traditional bank use among Kenyan adults using data from the **2024 FinAccess Household Survey**. In addition to evaluating predictive performance, it examines whether the selected model performs differently for women and men.
+
+The project also investigates whether characteristics other than gender contain information that may indirectly reveal gender, and whether adjusting the model's decision threshold can reduce observed differences in prediction outcomes.
+
+The final deliverable is an end-to-end machine learning pipeline that includes data preparation, model development, evaluation, fairness assessment, model explainability and a prediction API.
+
+### Project at a glance
+
+| Component | Description |
+|---|---|
+| Research area | Financial inclusion and machine learning |
+| Data source | 2024 FinAccess Household Survey |
+| Study population | Kenyan adults aged 18 years and above |
+| Adult sample | 19,750 respondents |
+| Selected data extract | 20,871 observations |
+| Prediction target | Traditional bank use |
+| Prediction task | Binary classification |
+| Selected model | Gradient Boosting |
+| Primary model-selection metric | Survey-weighted PR-AUC |
+| Fairness dimension | Gender |
+| Deployment | FastAPI and Docker |
+
+## 2. Project Objectives
+
+The main objective is to develop a machine learning model for predicting traditional bank use among Kenyan adults and assess whether its predictive performance differs between women and men.
+
+The project addresses five questions:
+
+1. How accurately can machine learning models predict traditional bank use using demographic, socioeconomic and household characteristics?
+2. Which classification model provides the strongest predictive performance?
+3. Does the selected model produce different prediction outcomes for women and men?
+4. Can decision-threshold adjustment reduce observed gender disparities?
+5. Which features contribute most to the model's predictions?
+
+The analysis is predictive rather than causal. It identifies patterns in the survey data but does not establish that the observed characteristics cause traditional bank use.
+
+## 3. Key Findings
+
+Gradient Boosting achieved the highest mean survey-weighted PR-AUC during model comparison and was selected as the final model.
+
+### Model performance
+
+Results on the held-out test set:
+
+| Metric | Survey-weighted result |
+|---|---:|
+| PR-AUC | **0.7530** |
+| ROC-AUC | 0.8707 |
+| Precision | 0.7333 |
+| Recall | 0.6126 |
+| F1-score | 0.6676 |
+| Brier score | 0.1307 |
+
+The weighted positive-class prevalence was approximately 0.304, providing a reference point for interpreting the PR-AUC.
+
+### Gender-fairness findings
+
+At the original classification threshold of 0.50, recall was approximately:
+
+- Women: 51.9%
+- Men: 67.5%
+
+This represents a male-minus-female recall gap of approximately **15.6 percentage points**.
+
+Using a common threshold of 0.320, selected from training out-of-fold predictions, reduced the gap to approximately **9.1 percentage points** on the test set.
+
+However, this improvement was accompanied by an increase in the false-positive rate. The findings demonstrate that improving one aspect of fairness can involve trade-offs with other performance measures.
+
+Gender was excluded from the model's prediction features but retained for fairness evaluation. Its exclusion does not automatically eliminate gender-related patterns in the remaining predictors.
+
+## 4. Project Workflow
+
+The project follows a sequence of stages, from data preparation to deployment.
 
 ```mermaid
-flowchart LR
-    RAW[("FinAccess 2024<br/>raw workbook<br/>(not committed)")] -->|"ingest --raw"| SEL
-    SEL[("finaccess_selected.csv<br/>48 columns")] --> ING["1 ingest<br/>schema + SHA-256"]
-    ING --> CLN["2 clean<br/>adults 18+, coding rules,<br/>feature manifest"]
-    CLN --> TRN["3 train<br/>cluster-held-out test set,<br/>nested group CV ladder"]
-    TRN --> EVA["4 evaluate<br/>locked test once:<br/>gender, calibration, segments"]
-    EVA --> MIT["5 mitigate<br/>thresholds from<br/>training OOF only"]
-    MIT --> ROB["6 robustness<br/>threshold bootstrap<br/>+ sensitivity sweep"]
-    ROB --> EXP["7 explain<br/>TreeSHAP: global,<br/>by gender, errors"]
-    EXP --> PKG["8 package<br/>model + threshold +<br/>schema + metadata"]
-    PKG --> ART[("models/<br/>model_package.joblib")]
-    ART --> PRD["predict.py<br/>batch scoring"]
-    ART --> SCH["api/schema.py<br/>generated request schema"]
-    SCH --> API["FastAPI service<br/>/predict /predict/batch<br/>/health /ready /metadata"]
-    ART --> API
-    API --> DOC["Docker image<br/>finaccess-bank-api:1.0.0"]
+flowchart TD
+    A["FinAccess 2024 Data"] --> B["Data Ingestion and Validation"]
+    B --> C["Data Cleaning and Preparation"]
+    C --> D["Feature Selection and Preprocessing"]
+    D --> E["Model Development"]
+    E --> F["Cluster-aware Model Validation"]
+    F --> G["Final Model Evaluation"]
+    G --> H["Gender Fairness Assessment"]
+    H --> I["Threshold Mitigation"]
+    I --> J["Model Explainability"]
+    J --> K["Model Packaging"]
+    K --> L["FastAPI Prediction Service"]
 ```
 
-Every learned step (imputation, encoding, model) lives inside one scikit-learn
-`Pipeline`, fitted on training folds only. The locked test set (20% of clusters)
-is scored once, in step 4.
+The pipeline is implemented through individual Python modules in the `src/` directory. Each stage produces outputs used by subsequent stages.
 
-## Repository layout
+## 5. Repository Structure
 
-```
+```text
 ├── src/
-│   ├── config.py          paths, constants, model version
-│   ├── ingest.py          1  validate the extract (or rebuild it from the raw workbook)
-│   ├── clean.py           2  adult sample, survey coding rules, feature manifest
-│   ├── train.py           3  model ladder, nested group CV, final fit
-│   ├── evaluate.py        4  test metrics, gender gaps, calibration, gender x location
-│   ├── mitigate.py        5  common vs gender-specific thresholds
-│   ├── robustness.py      6  threshold stability and sensitivity
-│   ├── explain.py         7  SHAP analyses
-│   ├── package.py         8  deployable model package + reload check
-│   ├── run_pipeline.py    runs steps 1-9 in order (9 = API schema)
-│   └── predict.py         batch prediction with the package
+│   ├── config.py
+│   ├── ingest.py
+│   ├── clean.py
+│   ├── train.py
+│   ├── evaluate.py
+│   ├── mitigate.py
+│   ├── robustness.py
+│   ├── proxy_check.py
+│   ├── explain.py
+│   ├── package.py
+│   ├── run_pipeline.py
+│   └── predict.py
+│
 ├── api/
-│   ├── main.py            FastAPI service
-│   ├── schema.py          request schema (generated from the model package)
-│   ├── generate_schema.py regenerates schema.py
-│   └── examples/          sample request bodies
-├── tests/                 pytest: cleaning rules, split integrity, package and API contracts
-├── config/raw_variable_map.csv   raw FinAccess -> project variable names
+│   ├── main.py
+│   ├── schema.py
+│   ├── generate_schema.py
+│   └── examples/
+│
+├── config/
+│   └── raw_variable_map.csv
+│
 ├── data/
-│   ├── raw/               raw workbook goes here (git-ignored)
-│   ├── processed/         selected extract and model-ready file
-│   └── sample/            25-row sample input + expected predictions
-├── models/                trained model, model package, CV predictions, split
-├── reports/               all result tables; figures/ for plots
-├── notebooks/archive/     exploratory notebooks (not part of the pipeline)
-├── DECISIONS.md           decision log
-├── TECHNIQUES.md          technique justification and exclusions
-├── AI_USE.md              AI assistance disclosure
-├── Dockerfile             multi-stage, non-root image with the model built in
-├── docker-compose.yml     one-command run of the API container
-├── requirements-api.txt   runtime dependencies for the container
-└── requirements-lock.txt  exact versions for local development
+│   ├── raw/
+│   ├── processed/
+│   └── sample/
+│
+├── models/
+├── reports/
+│   └── figures/
+├── notebooks/
+│   └── archive/
+├── tests/
+│
+├── DECISIONS.md
+├── TECHNIQUES.md
+├── AI_USE.md
+├── Dockerfile
+├── docker-compose.yml
+├── requirements-api.txt
+└── requirements-lock.txt
 ```
 
-## Setup
+### Main project directories
 
-Python 3.11 or 3.12.
+| Directory | Purpose |
+|---|---|
+| `src/` | Data processing, modelling, evaluation and prediction scripts |
+| `api/` | FastAPI application and request schemas |
+| `config/` | Data variable mapping and configuration files |
+| `data/` | Raw, processed and sample datasets |
+| `models/` | Trained models and model packages |
+| `reports/` | Evaluation results, audit tables and figures |
+| `notebooks/` | Archived exploratory analysis |
+| `tests/` | Automated project tests |
+
+## 6. Installation and Setup
+
+### Requirements
+
+- Python 3.11 or 3.12
+- Git
+- Docker Desktop (optional, for containerised deployment)
+
+Clone the repository and navigate to the project directory.
+
+Create a virtual environment:
 
 ```bash
 python -m venv .venv
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-# macOS / Linux
-# source .venv/bin/activate
-
-python -m pip install --upgrade pip
-pip install -r requirements-lock.txt      # exact tested versions
 ```
 
-## Data
+Activate it on Windows PowerShell:
 
-The project uses the FinAccess 2024 Household Survey (CBK, KNBS and FSD Kenya).
-`data/processed/finaccess_selected.csv` is a 48-column extract of the study
-variables (20,871 rows).
+```powershell
+.venv\Scripts\Activate.ps1
+```
 
-- **If you have the extract,** step 1 checks its schema, row count and SHA-256 hash.
-- **To rebuild it from the raw workbook,** put the workbook in `data/raw/`, fill
-  in the `raw_name` column of `config/raw_variable_map.csv`, and run:
+On macOS or Linux:
 
-  ```bash
-  python -m src.ingest --raw data/raw/<workbook>.xlsx --force
-  ```
+```bash
+source .venv/bin/activate
+```
 
-Expected hash of the extract:
-`af774518715ba1eed18605830133e72ec40dfd901c540e05b159975d8103d77c`
+Install the dependencies:
 
-## Reproduce everything
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements-lock.txt
+```
+
+## 7. Running the Project
+
+### Data preparation
+
+The raw FinAccess workbook is not included in the repository.
+
+Place the raw workbook in:
+
+```text
+data/raw/
+```
+
+Alternatively, use the selected data extract:
+
+```text
+data/processed/finaccess_selected.csv
+```
+
+To rebuild the selected extract from the raw workbook, update the variable mapping file:
+
+```text
+config/raw_variable_map.csv
+```
+
+Then run:
+
+```bash
+python -m src.ingest --raw data/raw/<workbook>.xlsx --force
+```
+
+### Run the complete pipeline
 
 From the project root:
 
 ```bash
-python -m src.run_pipeline        # steps 1-9, about 45 minutes on a typical laptop (training is most of it)
-python -m pytest                  # 36 tests (pipeline, package and API contracts)
+python -m src.run_pipeline
 ```
 
-Resume or run a single step:
+### Run an individual stage
+
+For example:
+
+```bash
+python -m src.train
+```
+
+### Resume from a particular stage
 
 ```bash
 python -m src.run_pipeline --from evaluate
-python -m src.run_pipeline --only package
-python -m src.train               # any step also runs on its own
 ```
 
-All random seeds are fixed (`RANDOM_STATE = 42`). A full re-run reproduces the
-reported test metrics exactly.
-
-## Make predictions
+### Run automated tests
 
 ```bash
-python -m src.predict --input data/sample/sample_input.csv --output reports/sample_predictions.csv
+python -m pytest
 ```
 
-The input needs the 35 feature columns listed in `reports/selected_features.json`.
-The output gives each row's probability, decision (1 if probability ≥ 0.320),
-threshold and model version. Missing columns are rejected; categories or values
-not seen in training produce a warning.
+The pipeline uses a fixed random seed (`RANDOM_STATE = 42`) to support reproducibility. A complete rerun requires the relevant data files and project dependencies.
 
-## Serve the model (API)
+## 8. Model Prediction and API
 
-The API loads `models/model_package.joblib` once at startup and validates every
-request against `api/schema.py`, which is generated from the package. Unknown
-fields, unknown categories, out-of-bounds values and wrong types are rejected
-with HTTP 422. Gender is not a field.
+The trained model can be used to generate predictions from a CSV file.
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /health` | Liveness: the process is up |
-| `GET /ready` | Readiness: the model is loaded (503 if not) |
-| `GET /metadata` | Model version, threshold rule, git commit, data hashes, test metrics |
-| `POST /predict` | Score one respondent |
-| `POST /predict/batch` | Score up to 500 respondents |
+### Batch prediction
 
-Each prediction returns a `request_id`, the probability, the decision at the
-0.320 threshold, the model version, the top 3 **reason codes** (SHAP
-contributions on the log-odds scale) and any warnings, for example a value
-outside the training range. If the model is not loaded or scoring fails, the
-API returns 503 or 500 and never a default decision. Request inputs are not
-logged.
+```bash
+python -m src.predict \
+    --input data/sample/sample_input.csv \
+    --output reports/sample_predictions.csv
+```
 
-**Run locally** (venv active):
+The prediction output includes the estimated probability, classification decision, decision threshold and model version.
+
+### Run the FastAPI application
+
+With the virtual environment activated:
 
 ```bash
 uvicorn api.main:app --reload
 ```
 
-Interactive docs: <http://localhost:8000/docs>
+The interactive API documentation is available at:
 
-**Sample request:**
+```text
+http://localhost:8000/docs
+```
+
+### Available endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Checks whether the API is running |
+| `GET /ready` | Checks whether the model is loaded |
+| `GET /metadata` | Returns model and evaluation metadata |
+| `POST /predict` | Generates a prediction for one respondent |
+| `POST /predict/batch` | Generates predictions for a batch of up to 500 respondents |
+
+### Run with Docker
+
+With Docker Desktop running:
+
+```bash
+docker compose up --build -d
+```
+
+Check the container status:
+
+```bash
+docker compose ps
+```
+
+Stop the service:
+
+```bash
+docker compose down
+```
+
+## 9. Results and Project Outputs
+
+The `reports/` directory contains the outputs generated during model development and evaluation.
+
+Some of the main files include:
+
+| File | Description |
+|---|---|
+| `model_cv_summary.csv` | Model comparison results |
+| `test_overall_metrics.csv` | Overall test-set performance |
+| `test_gender_metrics.csv` | Performance by gender |
+| `test_gender_gaps.csv` | Differences in performance between gender groups |
+| `test_segment_metrics.csv` | Performance across gender and location segments |
+| `mitigation_comparison.csv` | Comparison of threshold strategies |
+| `threshold_stability.csv` | Threshold stability analysis |
+| `gender_proxy_check.csv` | Gender-proxy audit |
+| `data_cleaning_audit.xlsx` | Data preparation and cleaning audit |
+
+Additional visualisations are stored in:
+
+```text
+reports/figures/
+```
+
+## 10. Limitations and Responsible Use
+
+The project has several limitations that should be considered when interpreting the findings.
+
+- **Cross-sectional data:** The analysis uses one round of the FinAccess survey and does not capture changes in financial behaviour over time.
+- **Prediction versus causation:** Model predictions and SHAP explanations identify statistical patterns, not causal relationships.
+- **Gender-related information:** Other predictor variables may indirectly contain information associated with gender.
+- **Fairness trade-offs:** Reducing disparities in one performance measure may increase errors in another.
+- **Generalisation:** Performance on the held-out test set does not guarantee equivalent performance on future survey rounds or other populations.
+- **Deployment scope:** The API is a technical demonstration, not a production-ready financial decision-making system.
+
+The model should therefore be interpreted as an analytical tool for studying traditional bank use and evaluating predictive fairness, rather than as a system for determining an individual's eligibility for financial services.
+
+## 11. Additional Documentation
+
+The following documents provide further information about the project:
+
+| Document | Description |
+|---|---|
+| `DECISIONS.md` | Records the main project decisions and the reasoning behind them |
+| `TECHNIQUES.md` | Explains the machine learning techniques and methodological choices |
+| `AI_USE.md` | Documents the use of AI assistance in the project |
+
+
+**DSA 8401 – Applied Machine Learning Capstone Project**  
+**Strathmore University**  
+**Author: Faith Makena Riungu**
+
+# Predicting Traditional Bank Use Among Kenyan Adults: A Machine Learning and Gender-Fairness Analysis
+
+**DSA 8401 – Applied Machine Learning Capstone Project**  
+**Strathmore University**
+
+**Author:** Faith Makena Riungu
+
+---
+
+## 1. Project Overview
+
+Financial inclusion in Kenya has expanded considerably over the years, supported by the growth of mobile money and digital financial services. However, access to financial services does not necessarily translate into the use of traditional banking products.
+
+This project applies machine learning to predict traditional bank use among Kenyan adults using data from the **2024 FinAccess Household Survey**. In addition to evaluating predictive performance, it examines whether the selected model performs differently for women and men.
+
+The project also investigates whether characteristics other than gender contain information that may indirectly reveal gender, and whether adjusting the model's decision threshold can reduce observed differences in prediction outcomes.
+
+The final deliverable is an end-to-end machine learning pipeline that includes data preparation, model development, evaluation, fairness assessment, model explainability and a prediction API.
+
+### Project at a glance
+
+| Component | Description |
+|---|---|
+| Research area | Financial inclusion and machine learning |
+| Data source | 2024 FinAccess Household Survey |
+| Study population | Kenyan adults aged 18 years and above |
+| Adult sample | 19,750 respondents |
+| Selected data extract | 20,871 observations |
+| Prediction target | Traditional bank use |
+| Prediction task | Binary classification |
+| Selected model | Gradient Boosting |
+| Primary model-selection metric | Survey-weighted PR-AUC |
+| Fairness dimension | Gender |
+| Deployment | FastAPI and Docker |
+
+## 2. Project Objectives
+
+The main objective is to develop a machine learning model for predicting traditional bank use among Kenyan adults and assess whether its predictive performance differs between women and men.
+
+The project addresses five questions:
+
+1. How accurately can machine learning models predict traditional bank use using demographic, socioeconomic and household characteristics?
+2. Which classification model provides the strongest predictive performance?
+3. Does the selected model produce different prediction outcomes for women and men?
+4. Can decision-threshold adjustment reduce observed gender disparities?
+5. Which features contribute most to the model's predictions?
+
+The analysis is predictive rather than causal. It identifies patterns in the survey data but does not establish that the observed characteristics cause traditional bank use.
+
+## 3. Key Findings
+
+Gradient Boosting achieved the highest mean survey-weighted PR-AUC during model comparison and was selected as the final model.
+
+### Model performance
+
+Results on the held-out test set:
+
+| Metric | Survey-weighted result |
+|---|---:|
+| PR-AUC | **0.7530** |
+| ROC-AUC | 0.8707 |
+| Precision | 0.7333 |
+| Recall | 0.6126 |
+| F1-score | 0.6676 |
+| Brier score | 0.1307 |
+
+The weighted positive-class prevalence was approximately 0.304, providing a reference point for interpreting the PR-AUC.
+
+### Gender-fairness findings
+
+At the original classification threshold of 0.50, recall was approximately:
+
+- Women: 51.9%
+- Men: 67.5%
+
+This represents a male-minus-female recall gap of approximately **15.6 percentage points**.
+
+Using a common threshold of 0.320, selected from training out-of-fold predictions, reduced the gap to approximately **9.1 percentage points** on the test set.
+
+However, this improvement was accompanied by an increase in the false-positive rate. The findings demonstrate that improving one aspect of fairness can involve trade-offs with other performance measures.
+
+Gender was excluded from the model's prediction features but retained for fairness evaluation. Its exclusion does not automatically eliminate gender-related patterns in the remaining predictors.
+
+## 4. Project Workflow
+
+The project follows a sequence of stages, from data preparation to deployment.
+
+```mermaid
+flowchart TD
+    A["FinAccess 2024 Data"] --> B["Data Ingestion and Validation"]
+    B --> C["Data Cleaning and Preparation"]
+    C --> D["Feature Selection and Preprocessing"]
+    D --> E["Model Development"]
+    E --> F["Cluster-aware Model Validation"]
+    F --> G["Final Model Evaluation"]
+    G --> H["Gender Fairness Assessment"]
+    H --> I["Threshold Mitigation"]
+    I --> J["Model Explainability"]
+    J --> K["Model Packaging"]
+    K --> L["FastAPI Prediction Service"]
+```
+
+The pipeline is implemented through individual Python modules in the `src/` directory. Each stage produces outputs used by subsequent stages.
+
+## 5. Repository Structure
+
+```text
+├── src/
+│   ├── config.py
+│   ├── ingest.py
+│   ├── clean.py
+│   ├── train.py
+│   ├── evaluate.py
+│   ├── mitigate.py
+│   ├── robustness.py
+│   ├── proxy_check.py
+│   ├── explain.py
+│   ├── package.py
+│   ├── run_pipeline.py
+│   └── predict.py
+│
+├── api/
+│   ├── main.py
+│   ├── schema.py
+│   ├── generate_schema.py
+│   └── examples/
+│
+├── config/
+│   └── raw_variable_map.csv
+│
+├── data/
+│   ├── raw/
+│   ├── processed/
+│   └── sample/
+│
+├── models/
+├── reports/
+│   └── figures/
+├── notebooks/
+│   └── archive/
+├── tests/
+│
+├── DECISIONS.md
+├── TECHNIQUES.md
+├── AI_USE.md
+├── Dockerfile
+├── docker-compose.yml
+├── requirements-api.txt
+└── requirements-lock.txt
+```
+
+### Main project directories
+
+| Directory | Purpose |
+|---|---|
+| `src/` | Data processing, modelling, evaluation and prediction scripts |
+| `api/` | FastAPI application and request schemas |
+| `config/` | Data variable mapping and configuration files |
+| `data/` | Raw, processed and sample datasets |
+| `models/` | Trained models and model packages |
+| `reports/` | Evaluation results, audit tables and figures |
+| `notebooks/` | Archived exploratory analysis |
+| `tests/` | Automated project tests |
+
+## 6. Installation and Setup
+
+### Requirements
+
+- Python 3.11 or 3.12
+- Git
+- Docker Desktop (optional, for containerised deployment)
+
+Clone the repository and navigate to the project directory.
+
+Create a virtual environment:
+
+```bash
+python -m venv .venv
+```
+
+Activate it on Windows PowerShell:
 
 ```powershell
-# Windows PowerShell
-Invoke-RestMethod -Method Post -Uri http://localhost:8000/predict `
-  -ContentType "application/json" -InFile api/examples/predict_request.json | ConvertTo-Json -Depth 5
+.venv\Scripts\Activate.ps1
 ```
+
+On macOS or Linux:
 
 ```bash
-# macOS / Linux / Git Bash
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" -d @api/examples/predict_request.json
+source .venv/bin/activate
 ```
 
-Expected response (abridged):
-
-```json
-{
-  "model_version": "1.0.0",
-  "probability": 0.157901,
-  "decision": 0,
-  "decision_label": "unlikely bank user",
-  "threshold": 0.32,
-  "reason_codes": [
-    {"feature": "internet_use_frequency", "effect": "raises", "contribution": 0.4307},
-    {"feature": "income_highest_month", "effect": "lowers", "contribution": -0.2992},
-    {"feature": "wealth_quintile", "effect": "lowers", "contribution": -0.2835}
-  ],
-  "warnings": []
-}
-```
-
-If the model is retrained, regenerate the schema with `python -m api.generate_schema`.
-The API tests fail until you do.
-
-## Run with Docker
-
-Requires Docker Desktop to be running. The image uses a slim Python base and a
-multi-stage build: dependencies are installed before the code is copied (so
-they are cached), it runs as a non-root user, has a `HEALTHCHECK` on `/health`,
-and has the model package built in. The build context is allow-listed in
-`.dockerignore`, so no data, notebooks or secrets enter the image.
+Install the dependencies:
 
 ```bash
-docker compose up --build -d     # build image finaccess-bank-api:1.0.0 and start it
-docker compose ps                # STATUS shows "healthy" after about 30 seconds
+python -m pip install --upgrade pip
+pip install -r requirements-lock.txt
 ```
 
-Then send the sample request above to <http://localhost:8000/predict>, or open
-<http://localhost:8000/docs>.
+## 7. Running the Project
+
+### Data preparation
+
+The raw FinAccess workbook is not included in the repository.
+
+Place the raw workbook in:
+
+```text
+data/raw/
+```
+
+Alternatively, use the selected data extract:
+
+```text
+data/processed/finaccess_selected.csv
+```
+
+To rebuild the selected extract from the raw workbook, update the variable mapping file:
+
+```text
+config/raw_variable_map.csv
+```
+
+Then run:
 
 ```bash
-docker compose logs -f api       # follow logs (request IDs and latency, no inputs)
-docker compose down              # stop and remove the container
+python -m src.ingest --raw data/raw/<workbook>.xlsx --force
 ```
 
-Without Compose:
+### Run the complete pipeline
+
+From the project root:
 
 ```bash
-docker build -t finaccess-bank-api:1.0.0 .
-docker run --rm -p 8000:8000 finaccess-bank-api:1.0.0
+python -m src.run_pipeline
 ```
 
-The container runs with a read-only filesystem (`read_only: true` in
-`docker-compose.yml`), because the service never writes to disk.
+### Run an individual stage
 
-## Results at a glance
+For example:
 
-| Output | File |
-| --- | --- |
-| Model ladder (CV) | `reports/model_cv_summary.csv` |
-| Test metrics, with chance baseline | `reports/test_overall_metrics.csv` |
-| Metrics and gaps by gender, with CIs | `reports/test_gender_metrics.csv`, `reports/test_gender_gaps.csv` |
-| Calibration by gender | `reports/test_calibration_summary.csv`, `reports/figures/calibration_by_gender.png` |
-| Gender x rural/urban | `reports/test_segment_metrics.csv` |
-| Threshold comparison | `reports/mitigation_comparison.csv` |
-| Threshold stability and sweep | `reports/threshold_stability.csv`, `reports/figures/threshold_sweep_test.png` |
-| SHAP | `reports/shap_*.csv`, `reports/figures/shap_*.png` |
-| Data audit | `reports/data_cleaning_audit.xlsx` |
+```bash
+python -m src.train
+```
 
-## Limitations
+### Resume from a particular stage
 
-The model predicts from a single cross-sectional survey round, and SHAP values
-explain the model, not causes. Other inputs, such as relationship to household
-head and marital status, partly reveal gender, so excluding gender does not
-make the model gender-blind. Recall gaps are widest across gender and location
-together (49% for rural women vs 74% for urban men). See `DECISIONS.md` for the
-full list.
+```bash
+python -m src.run_pipeline --from evaluate
+```
 
-## Documentation
+### Run automated tests
 
-- `DECISIONS.md`: every data, validation, modelling and threshold decision, with evidence
-- `TECHNIQUES.md`: why these techniques, and why not stacking, deep learning, SMOTE, fairness-constrained training or demographic parity
-- `AI_USE.md`: disclosure of AI assistance
+```bash
+python -m pytest
+```
+
+The pipeline uses a fixed random seed (`RANDOM_STATE = 42`) to support reproducibility. A complete rerun requires the relevant data files and project dependencies.
+
+## 8. Model Prediction and API
+
+The trained model can be used to generate predictions from a CSV file.
+
+### Batch prediction
+
+```bash
+python -m src.predict \
+    --input data/sample/sample_input.csv \
+    --output reports/sample_predictions.csv
+```
+
+The prediction output includes the estimated probability, classification decision, decision threshold and model version.
+
+### Run the FastAPI application
+
+With the virtual environment activated:
+
+```bash
+uvicorn api.main:app --reload
+```
+
+The interactive API documentation is available at:
+
+```text
+http://localhost:8000/docs
+```
+
+### Available endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Checks whether the API is running |
+| `GET /ready` | Checks whether the model is loaded |
+| `GET /metadata` | Returns model and evaluation metadata |
+| `POST /predict` | Generates a prediction for one respondent |
+| `POST /predict/batch` | Generates predictions for a batch of up to 500 respondents |
+
+### Run with Docker
+
+With Docker Desktop running:
+
+```bash
+docker compose up --build -d
+```
+
+Check the container status:
+
+```bash
+docker compose ps
+```
+
+Stop the service:
+
+```bash
+docker compose down
+```
+
+## 9. Results and Project Outputs
+
+The `reports/` directory contains the outputs generated during model development and evaluation.
+
+Some of the main files include:
+
+| File | Description |
+|---|---|
+| `model_cv_summary.csv` | Model comparison results |
+| `test_overall_metrics.csv` | Overall test-set performance |
+| `test_gender_metrics.csv` | Performance by gender |
+| `test_gender_gaps.csv` | Differences in performance between gender groups |
+| `test_segment_metrics.csv` | Performance across gender and location segments |
+| `mitigation_comparison.csv` | Comparison of threshold strategies |
+| `threshold_stability.csv` | Threshold stability analysis |
+| `gender_proxy_check.csv` | Gender-proxy audit |
+| `data_cleaning_audit.xlsx` | Data preparation and cleaning audit |
+
+Additional visualisations are stored in:
+
+```text
+reports/figures/
+```
+
+## 10. Limitations and Responsible Use
+
+The project has several limitations that should be considered when interpreting the findings.
+
+- **Cross-sectional data:** The analysis uses one round of the FinAccess survey and does not capture changes in financial behaviour over time.
+- **Prediction versus causation:** Model predictions and SHAP explanations identify statistical patterns, not causal relationships.
+- **Gender-related information:** Other predictor variables may indirectly contain information associated with gender.
+- **Fairness trade-offs:** Reducing disparities in one performance measure may increase errors in another.
+- **Generalisation:** Performance on the held-out test set does not guarantee equivalent performance on future survey rounds or other populations.
+- **Deployment scope:** The API is a technical demonstration, not a production-ready financial decision-making system.
+
+The model should therefore be interpreted as an analytical tool for studying traditional bank use and evaluating predictive fairness, rather than as a system for determining an individual's eligibility for financial services.
+
+## 11. Additional Documentation
+
+The following documents provide further information about the project:
+
+| Document | Description |
+|---|---|
+| `DECISIONS.md` | Records the main project decisions and the reasoning behind them |
+| `TECHNIQUES.md` | Explains the machine learning techniques and methodological choices |
+| `AI_USE.md` | Documents the use of AI assistance in the project |
+
+---
+
+**DSA 8401 – Applied Machine Learning Capstone Project**  
+**Strathmore University**  
+**Author: Faith Makena Riungu**
+
+# Predicting Traditional Bank Use Among Kenyan Adults: A Machine Learning and Gender-Fairness Analysis
+
+**DSA 8401 – Applied Machine Learning Capstone Project**  
+**Strathmore University**
+
+**Author:** Faith Makena Riungu
+
+---
+
+## 1. Project Overview
+
+Financial inclusion in Kenya has expanded considerably over the years, supported by the growth of mobile money and digital financial services. However, access to financial services does not necessarily translate into the use of traditional banking products.
+
+This project applies machine learning to predict traditional bank use among Kenyan adults using data from the **2024 FinAccess Household Survey**. In addition to evaluating predictive performance, it examines whether the selected model performs differently for women and men.
+
+The project also investigates whether characteristics other than gender contain information that may indirectly reveal gender, and whether adjusting the model's decision threshold can reduce observed differences in prediction outcomes.
+
+The final deliverable is an end-to-end machine learning pipeline that includes data preparation, model development, evaluation, fairness assessment, model explainability and a prediction API.
+
+### Project at a glance
+
+| Component | Description |
+|---|---|
+| Research area | Financial inclusion and machine learning |
+| Data source | 2024 FinAccess Household Survey |
+| Study population | Kenyan adults aged 18 years and above |
+| Adult sample | 19,750 respondents |
+| Selected data extract | 20,871 observations |
+| Prediction target | Traditional bank use |
+| Prediction task | Binary classification |
+| Selected model | Gradient Boosting |
+| Primary model-selection metric | Survey-weighted PR-AUC |
+| Fairness dimension | Gender |
+| Deployment | FastAPI and Docker |
+
+## 2. Project Objectives
+
+The main objective is to develop a machine learning model for predicting traditional bank use among Kenyan adults and assess whether its predictive performance differs between women and men.
+
+The project addresses five questions:
+
+1. How accurately can machine learning models predict traditional bank use using demographic, socioeconomic and household characteristics?
+2. Which classification model provides the strongest predictive performance?
+3. Does the selected model produce different prediction outcomes for women and men?
+4. Can decision-threshold adjustment reduce observed gender disparities?
+5. Which features contribute most to the model's predictions?
+
+The analysis is predictive rather than causal. It identifies patterns in the survey data but does not establish that the observed characteristics cause traditional bank use.
+
+## 3. Key Findings
+
+Gradient Boosting achieved the highest mean survey-weighted PR-AUC during model comparison and was selected as the final model.
+
+### Model performance
+
+Results on the held-out test set:
+
+| Metric | Survey-weighted result |
+|---|---:|
+| PR-AUC | **0.7530** |
+| ROC-AUC | 0.8707 |
+| Precision | 0.7333 |
+| Recall | 0.6126 |
+| F1-score | 0.6676 |
+| Brier score | 0.1307 |
+
+The weighted positive-class prevalence was approximately 0.304, providing a reference point for interpreting the PR-AUC.
+
+### Gender-fairness findings
+
+At the original classification threshold of 0.50, recall was approximately:
+
+- Women: 51.9%
+- Men: 67.5%
+
+This represents a male-minus-female recall gap of approximately **15.6 percentage points**.
+
+Using a common threshold of 0.320, selected from training out-of-fold predictions, reduced the gap to approximately **9.1 percentage points** on the test set.
+
+However, this improvement was accompanied by an increase in the false-positive rate. The findings demonstrate that improving one aspect of fairness can involve trade-offs with other performance measures.
+
+Gender was excluded from the model's prediction features but retained for fairness evaluation. Its exclusion does not automatically eliminate gender-related patterns in the remaining predictors.
+
+## 4. Project Workflow
+
+The project follows a sequence of stages, from data preparation to deployment.
+
+```mermaid
+flowchart TD
+    A["FinAccess 2024 Data"] --> B["Data Ingestion and Validation"]
+    B --> C["Data Cleaning and Preparation"]
+    C --> D["Feature Selection and Preprocessing"]
+    D --> E["Model Development"]
+    E --> F["Cluster-aware Model Validation"]
+    F --> G["Final Model Evaluation"]
+    G --> H["Gender Fairness Assessment"]
+    H --> I["Threshold Mitigation"]
+    I --> J["Model Explainability"]
+    J --> K["Model Packaging"]
+    K --> L["FastAPI Prediction Service"]
+```
+
+The pipeline is implemented through individual Python modules in the `src/` directory. Each stage produces outputs used by subsequent stages.
+
+## 5. Repository Structure
+
+```text
+├── src/
+│   ├── config.py
+│   ├── ingest.py
+│   ├── clean.py
+│   ├── train.py
+│   ├── evaluate.py
+│   ├── mitigate.py
+│   ├── robustness.py
+│   ├── proxy_check.py
+│   ├── explain.py
+│   ├── package.py
+│   ├── run_pipeline.py
+│   └── predict.py
+│
+├── api/
+│   ├── main.py
+│   ├── schema.py
+│   ├── generate_schema.py
+│   └── examples/
+│
+├── config/
+│   └── raw_variable_map.csv
+│
+├── data/
+│   ├── raw/
+│   ├── processed/
+│   └── sample/
+│
+├── models/
+├── reports/
+│   └── figures/
+├── notebooks/
+│   └── archive/
+├── tests/
+│
+├── DECISIONS.md
+├── TECHNIQUES.md
+├── AI_USE.md
+├── Dockerfile
+├── docker-compose.yml
+├── requirements-api.txt
+└── requirements-lock.txt
+```
+
+### Main project directories
+
+| Directory | Purpose |
+|---|---|
+| `src/` | Data processing, modelling, evaluation and prediction scripts |
+| `api/` | FastAPI application and request schemas |
+| `config/` | Data variable mapping and configuration files |
+| `data/` | Raw, processed and sample datasets |
+| `models/` | Trained models and model packages |
+| `reports/` | Evaluation results, audit tables and figures |
+| `notebooks/` | Archived exploratory analysis |
+| `tests/` | Automated project tests |
+
+## 6. Installation and Setup
+
+### Requirements
+
+- Python 3.11 or 3.12
+- Git
+- Docker Desktop (optional, for containerised deployment)
+
+Clone the repository and navigate to the project directory.
+
+Create a virtual environment:
+
+```bash
+python -m venv .venv
+```
+
+Activate it on Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+On macOS or Linux:
+
+```bash
+source .venv/bin/activate
+```
+
+Install the dependencies:
+
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements-lock.txt
+```
+
+## 7. Running the Project
+
+### Data preparation
+
+The raw FinAccess workbook is not included in the repository.
+
+Place the raw workbook in:
+
+```text
+data/raw/
+```
+
+Alternatively, use the selected data extract:
+
+```text
+data/processed/finaccess_selected.csv
+```
+
+To rebuild the selected extract from the raw workbook, update the variable mapping file:
+
+```text
+config/raw_variable_map.csv
+```
+
+Then run:
+
+```bash
+python -m src.ingest --raw data/raw/<workbook>.xlsx --force
+```
+
+### Run the complete pipeline
+
+From the project root:
+
+```bash
+python -m src.run_pipeline
+```
+
+### Run an individual stage
+
+For example:
+
+```bash
+python -m src.train
+```
+
+### Resume from a particular stage
+
+```bash
+python -m src.run_pipeline --from evaluate
+```
+
+### Run automated tests
+
+```bash
+python -m pytest
+```
+
+The pipeline uses a fixed random seed (`RANDOM_STATE = 42`) to support reproducibility. A complete rerun requires the relevant data files and project dependencies.
+
+## 8. Model Prediction and API
+
+The trained model can be used to generate predictions from a CSV file.
+
+### Batch prediction
+
+```bash
+python -m src.predict \
+    --input data/sample/sample_input.csv \
+    --output reports/sample_predictions.csv
+```
+
+The prediction output includes the estimated probability, classification decision, decision threshold and model version.
+
+### Run the FastAPI application
+
+With the virtual environment activated:
+
+```bash
+uvicorn api.main:app --reload
+```
+
+The interactive API documentation is available at:
+
+```text
+http://localhost:8000/docs
+```
+
+### Available endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Checks whether the API is running |
+| `GET /ready` | Checks whether the model is loaded |
+| `GET /metadata` | Returns model and evaluation metadata |
+| `POST /predict` | Generates a prediction for one respondent |
+| `POST /predict/batch` | Generates predictions for a batch of up to 500 respondents |
+
+### Run with Docker
+
+With Docker Desktop running:
+
+```bash
+docker compose up --build -d
+```
+
+Check the container status:
+
+```bash
+docker compose ps
+```
+
+Stop the service:
+
+```bash
+docker compose down
+```
+
+## 9. Results and Project Outputs
+
+The `reports/` directory contains the outputs generated during model development and evaluation.
+
+Some of the main files include:
+
+| File | Description |
+|---|---|
+| `model_cv_summary.csv` | Model comparison results |
+| `test_overall_metrics.csv` | Overall test-set performance |
+| `test_gender_metrics.csv` | Performance by gender |
+| `test_gender_gaps.csv` | Differences in performance between gender groups |
+| `test_segment_metrics.csv` | Performance across gender and location segments |
+| `mitigation_comparison.csv` | Comparison of threshold strategies |
+| `threshold_stability.csv` | Threshold stability analysis |
+| `gender_proxy_check.csv` | Gender-proxy audit |
+| `data_cleaning_audit.xlsx` | Data preparation and cleaning audit |
+
+Additional visualisations are stored in:
+
+```text
+reports/figures/
+```
+
+## 10. Limitations and Responsible Use
+
+The project has several limitations that should be considered when interpreting the findings.
+
+- **Cross-sectional data:** The analysis uses one round of the FinAccess survey and does not capture changes in financial behaviour over time.
+- **Prediction versus causation:** Model predictions and SHAP explanations identify statistical patterns, not causal relationships.
+- **Gender-related information:** Other predictor variables may indirectly contain information associated with gender.
+- **Fairness trade-offs:** Reducing disparities in one performance measure may increase errors in another.
+- **Generalisation:** Performance on the held-out test set does not guarantee equivalent performance on future survey rounds or other populations.
+- **Deployment scope:** The API is a technical demonstration, not a production-ready financial decision-making system.
+
+The model should therefore be interpreted as an analytical tool for studying traditional bank use and evaluating predictive fairness, rather than as a system for determining an individual's eligibility for financial services.
+
+## 11. Additional Documentation
+
+The following documents provide further information about the project:
+
+| Document | Description |
+|---|---|
+| `DECISIONS.md` | Records the main project decisions and the reasoning behind them |
+| `TECHNIQUES.md` | Explains the machine learning techniques and methodological choices |
+| `AI_USE.md` | Documents the use of AI assistance in the project |
+
+---
+
+**DSA 8401 – Applied Machine Learning Capstone Project**  
+**Strathmore University**  
+**Author: Faith Makena Riungu**

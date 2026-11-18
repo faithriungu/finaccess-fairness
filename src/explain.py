@@ -4,9 +4,11 @@ SHAP analysis for the FinAccess traditional bank-use model.
 
 Run from the project root:
     python -m src.explain
-
-Optional threshold for false-negative/false-positive analysis:
-    python -m src.explain --threshold 0.32
+By default, false negatives/positives are defined at the deployed decision
+threshold (common_threshold_weighted_f1 in reports/decision_thresholds.json),
+so the error analysis matches what the model package and API decide.
+Override with:
+    python -m src.explain --threshold 0.50
 
 Analyses:
 1. Global SHAP importance across the 35 original predictors.
@@ -17,6 +19,7 @@ Uses the saved model and locked test set. Does not retrain the model.
 """
 
 import argparse
+import json
 import warnings
 
 import joblib
@@ -50,8 +53,9 @@ def parse_args():
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.50,
-        help="Threshold used to identify false negatives and false positives."
+        default=None,
+        help=("Threshold used to identify false negatives and false positives. "
+              "Default: the deployed threshold from reports/decision_thresholds.json.")
     )
 
     return parser.parse_args()
@@ -631,6 +635,16 @@ def save_plots(
 def main():
 
     args = parse_args()
+
+    if args.threshold is None:
+        thresholds_path = REPORTS_DIR / "decision_thresholds.json"
+        if not thresholds_path.exists():
+            raise FileNotFoundError(
+                f"{thresholds_path} not found. Run python -m src.mitigate first, "
+                "or pass --threshold explicitly."
+            )
+        thresholds = json.loads(thresholds_path.read_text(encoding="utf-8"))
+        args.threshold = round(float(thresholds["common_threshold_weighted_f1"]), 3)
 
     if not 0 < args.threshold < 1:
         raise ValueError(

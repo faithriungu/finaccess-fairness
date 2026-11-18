@@ -22,7 +22,8 @@ STEPS = [
     ("evaluate", "Score the locked test set once; fairness, calibration, segments"),
     ("mitigate", "Choose thresholds on training OOF; compare on test"),
     ("robustness", "Threshold stability (bootstrap) and sensitivity sweep"),
-    ("explain", "SHAP: global, by gender, and on errors"),
+    ("proxy_check", "How well the predictors reveal gender (proxy audit)"),
+    ("explain", "SHAP: global, by gender, and on errors at the deployed threshold"),
     ("package", "Bundle model + threshold + schema + metadata; reload check"),
     ("schema", "Regenerate the API request schema from the package"),
 ]
