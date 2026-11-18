@@ -107,62 +107,77 @@ The pipeline is implemented through individual Python modules in the `src/` dire
 ## 5. Repository Structure
 
 ```text
-├── src/
-│   ├── config.py
-│   ├── ingest.py
-│   ├── clean.py
-│   ├── train.py
-│   ├── evaluate.py
-│   ├── mitigate.py
-│   ├── robustness.py
-│   ├── proxy_check.py
-│   ├── explain.py
-│   ├── package.py
-│   ├── run_pipeline.py
-│   └── predict.py
+finaccess-fairness/
+├── src/                          Pipeline code (run in order by run_pipeline.py)
+│   ├── config.py                 Paths, constants and model version
+│   ├── ingest.py                 1  Validate the data extract and record its hash
+│   ├── clean.py                  2  Adult sample, survey coding rules, feature list
+│   ├── train.py                  3  Model comparison (nested CV) and final model
+│   ├── evaluate.py               4  Test metrics, gender gaps, calibration, segments
+│   ├── mitigate.py               5  Threshold comparison
+│   ├── robustness.py             6  Threshold stability and sensitivity
+│   ├── proxy_check.py            7  Gender-proxy audit of the predictors
+│   ├── explain.py                8  SHAP analysis at the deployed threshold
+│   ├── package.py                9  Model package and reload check
+│   ├── run_pipeline.py           Runs steps 1-10 (10 = API schema)
+│   └── predict.py                Batch prediction from a CSV
 │
-├── api/
-│   ├── main.py
-│   ├── schema.py
-│   ├── generate_schema.py
-│   └── examples/
+├── api/                          FastAPI service
+│   ├── main.py                   Endpoints: predict, batch, health, ready, metadata
+│   ├── schema.py                 Request schema (generated from the model package)
+│   ├── generate_schema.py        Regenerates schema.py
+│   └── examples/                 Sample request bodies
+│
+├── tests/                        Automated tests (36)
+│   ├── test_clean.py             Cleaning rules
+│   ├── test_pipeline_outputs.py  Split integrity and feature manifest
+│   ├── test_package.py           Model package contract
+│   └── test_api.py               API contract
 │
 ├── config/
-│   └── raw_variable_map.csv
+│   └── raw_variable_map.csv      Raw FinAccess -> project variable names
 │
 ├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── sample/
+│   ├── raw/                      Raw survey workbook (not committed)
+│   ├── processed/                Selected extract and model-ready data
+│   └── sample/                   25-row sample input and expected predictions
 │
-├── models/
+├── models/                       Trained model, model package, CV predictions, split
+│
 ├── reports/
-│   └── figures/
-├── notebooks/
-│   └── archive/
-├── tests/
+│   ├── final_report/             Final report and presentation (PDF and LaTeX)
+│   ├── figures/                  Calibration, threshold and SHAP plots
+│   └── *.csv, *.json, *.xlsx     Result tables and data-cleaning audit
 │
-├── DECISIONS.md
-├── TECHNIQUES.md
-├── AI_USE.md
-├── Dockerfile
-├── docker-compose.yml
-├── requirements-api.txt
-└── requirements-lock.txt
+├── notebooks/
+│   └── archive/                  Exploratory notebooks (not part of the pipeline)
+│
+├── README.md
+├── DECISIONS.md                  Decision log
+├── TECHNIQUES.md                 Technique justification and exclusions
+├── AI_USE.md                     AI assistance disclosure
+├── Dockerfile                    API container image
+├── docker-compose.yml            One-command container run
+├── .dockerignore                 Keeps data and notebooks out of the image
+├── .gitignore
+├── pytest.ini
+├── requirements.txt              Direct dependencies
+├── requirements-lock.txt         Exact tested versions (local development)
+└── requirements-api.txt          Container runtime dependencies
 ```
 
 ### Main project directories
 
 | Directory | Purpose |
 |---|---|
-| `src/` | Data processing, modelling, evaluation and prediction scripts |
-| `api/` | FastAPI application and request schemas |
-| `config/` | Data variable mapping and configuration files |
-| `data/` | Raw, processed and sample datasets |
-| `models/` | Trained models and model packages |
-| `reports/` | Evaluation results, audit tables and figures |
+| `src/` | Data processing, modelling, evaluation, explainability and prediction scripts |
+| `api/` | FastAPI application, generated request schema and example requests |
+| `tests/` | Automated tests for cleaning, data splits, the model package and the API |
+| `config/` | Raw-to-project variable mapping |
+| `data/` | Raw (not committed), processed and sample datasets |
+| `models/` | Trained model, deployable model package and cross-validation outputs |
+| `reports/` | Result tables, figures, data audit, final report and presentation |
 | `notebooks/` | Archived exploratory analysis |
-| `tests/` | Automated project tests |
 
 ## 6. Installation and Setup
 
