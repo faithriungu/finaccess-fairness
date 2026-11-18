@@ -36,7 +36,10 @@ flowchart LR
     EXP --> PKG["8 package<br/>model + threshold +<br/>schema + metadata"]
     PKG --> ART[("models/<br/>model_package.joblib")]
     ART --> PRD["predict.py<br/>batch scoring"]
-    ART -.-> API["FastAPI service<br/>+ Docker<br/>(next stage)"]
+    ART --> SCH["api/schema.py<br/>generated request schema"]
+    SCH --> API["FastAPI service<br/>/predict /predict/batch<br/>/health /ready /metadata"]
+    ART --> API
+    API --> DOC["Docker image<br/>finaccess-bank-api:1.0.0"]
 ```
 
 Every learned step (imputation, encoding, model) lives inside one scikit-learn
@@ -56,9 +59,14 @@ is scored once, in step 4.
 │   ├── robustness.py      6  threshold stability and sensitivity
 │   ├── explain.py         7  SHAP analyses
 │   ├── package.py         8  deployable model package + reload check
-│   ├── run_pipeline.py    runs steps 1-8 in order
+│   ├── run_pipeline.py    runs steps 1-9 in order (9 = API schema)
 │   └── predict.py         batch prediction with the package
-├── tests/                 pytest: cleaning rules, split integrity, package contract
+├── api/
+│   ├── main.py            FastAPI service
+│   ├── schema.py          request schema (generated from the model package)
+│   ├── generate_schema.py regenerates schema.py
+│   └── examples/          sample request bodies
+├── tests/                 pytest: cleaning rules, split integrity, package and API contracts
 ├── config/raw_variable_map.csv   raw FinAccess -> project variable names
 ├── data/
 │   ├── raw/               raw workbook goes here (git-ignored)
@@ -69,7 +77,11 @@ is scored once, in step 4.
 ├── notebooks/archive/     exploratory notebooks (not part of the pipeline)
 ├── DECISIONS.md           decision log
 ├── TECHNIQUES.md          technique justification and exclusions
-└── AI_USE.md              AI assistance disclosure
+├── AI_USE.md              AI assistance disclosure
+├── Dockerfile             multi-stage, non-root image with the model built in
+├── docker-compose.yml     one-command run of the API container
+├── requirements-api.txt   runtime dependencies for the container
+└── requirements-lock.txt  exact versions for local development
 ```
 
 ## Setup
@@ -109,8 +121,8 @@ Expected hash of the extract:
 From the project root:
 
 ```bash
-python -m src.run_pipeline        # steps 1-8, about 50 minutes on a laptop
-python -m pytest                  # 16 tests
+python -m src.run_pipeline        # steps 1-9, about 45 minutes on a typical laptop (training is most of it)
+python -m pytest                  # 36 tests (pipeline, package and API contracts)
 ```
 
 Resume or run a single step:
@@ -134,6 +146,102 @@ The input needs the 35 feature columns listed in `reports/selected_features.json
 The output gives each row's probability, decision (1 if probability ≥ 0.320),
 threshold and model version. Missing columns are rejected; categories or values
 not seen in training produce a warning.
+
+## Serve the model (API)
+
+The API loads `models/model_package.joblib` once at startup and validates every
+request against `api/schema.py`, which is generated from the package. Unknown
+fields, unknown categories, out-of-bounds values and wrong types are rejected
+with HTTP 422. Gender is not a field.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Liveness: the process is up |
+| `GET /ready` | Readiness: the model is loaded (503 if not) |
+| `GET /metadata` | Model version, threshold rule, git commit, data hashes, test metrics |
+| `POST /predict` | Score one respondent |
+| `POST /predict/batch` | Score up to 500 respondents |
+
+Each prediction returns a `request_id`, the probability, the decision at the
+0.320 threshold, the model version, the top 3 **reason codes** (SHAP
+contributions on the log-odds scale) and any warnings, for example a value
+outside the training range. If the model is not loaded or scoring fails, the
+API returns 503 or 500 and never a default decision. Request inputs are not
+logged.
+
+**Run locally** (venv active):
+
+```bash
+uvicorn api.main:app --reload
+```
+
+Interactive docs: <http://localhost:8000/docs>
+
+**Sample request:**
+
+```powershell
+# Windows PowerShell
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/predict `
+  -ContentType "application/json" -InFile api/examples/predict_request.json | ConvertTo-Json -Depth 5
+```
+
+```bash
+# macOS / Linux / Git Bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" -d @api/examples/predict_request.json
+```
+
+Expected response (abridged):
+
+```json
+{
+  "model_version": "1.0.0",
+  "probability": 0.157901,
+  "decision": 0,
+  "decision_label": "unlikely bank user",
+  "threshold": 0.32,
+  "reason_codes": [
+    {"feature": "internet_use_frequency", "effect": "raises", "contribution": 0.4307},
+    {"feature": "income_highest_month", "effect": "lowers", "contribution": -0.2992},
+    {"feature": "wealth_quintile", "effect": "lowers", "contribution": -0.2835}
+  ],
+  "warnings": []
+}
+```
+
+If the model is retrained, regenerate the schema with `python -m api.generate_schema`.
+The API tests fail until you do.
+
+## Run with Docker
+
+Requires Docker Desktop to be running. The image uses a slim Python base and a
+multi-stage build: dependencies are installed before the code is copied (so
+they are cached), it runs as a non-root user, has a `HEALTHCHECK` on `/health`,
+and has the model package built in. The build context is allow-listed in
+`.dockerignore`, so no data, notebooks or secrets enter the image.
+
+```bash
+docker compose up --build -d     # build image finaccess-bank-api:1.0.0 and start it
+docker compose ps                # STATUS shows "healthy" after about 30 seconds
+```
+
+Then send the sample request above to <http://localhost:8000/predict>, or open
+<http://localhost:8000/docs>.
+
+```bash
+docker compose logs -f api       # follow logs (request IDs and latency, no inputs)
+docker compose down              # stop and remove the container
+```
+
+Without Compose:
+
+```bash
+docker build -t finaccess-bank-api:1.0.0 .
+docker run --rm -p 8000:8000 finaccess-bank-api:1.0.0
+```
+
+The container runs with a read-only filesystem (`read_only: true` in
+`docker-compose.yml`), because the service never writes to disk.
 
 ## Results at a glance
 

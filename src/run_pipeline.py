@@ -1,7 +1,7 @@
 """Run the whole pipeline end to end, in order.
 
 Run from the project root:
-    python -m src.run_pipeline                 # everything, from ingestion
+    python -m src.run_pipeline                 # steps 1-9, from ingestion
     python -m src.run_pipeline --from evaluate # resume from a later step
     python -m src.run_pipeline --only package  # one step
 
@@ -24,7 +24,10 @@ STEPS = [
     ("robustness", "Threshold stability (bootstrap) and sensitivity sweep"),
     ("explain", "SHAP: global, by gender, and on errors"),
     ("package", "Bundle model + threshold + schema + metadata; reload check"),
+    ("schema", "Regenerate the API request schema from the package"),
 ]
+# Module run for each step (default: src.<step>).
+MODULES = {"schema": "api.generate_schema"}
 NAMES = [name for name, _ in STEPS]
 
 
@@ -45,7 +48,8 @@ def main():
     for i, (name, description) in enumerate(selected, start=1):
         print(f"\n{'=' * 72}\n[{i}/{len(selected)}] {name}: {description}\n{'=' * 72}", flush=True)
         t0 = time.time()
-        result = subprocess.run([sys.executable, "-m", f"src.{name}"], cwd=ROOT)
+        module = MODULES.get(name, f"src.{name}")
+        result = subprocess.run([sys.executable, "-m", module], cwd=ROOT)
         if result.returncode != 0:
             print(f"\nStep '{name}' failed (exit code {result.returncode}). Stopping.")
             sys.exit(result.returncode)

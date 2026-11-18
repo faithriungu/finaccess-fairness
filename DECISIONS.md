@@ -96,6 +96,12 @@ techniques is in `TECHNIQUES.md`.
 ### D14. Model package contents
 - `models/model_package.joblib` holds the fitted pipeline, the 0.320 threshold, an input schema learnt from the training partition, and metadata: version, git commit, SHA-256 hashes of both data files, library versions, and test metrics. `src/package.py` saves it, reloads it, and fails unless the reloaded package reproduces the predictions exactly.
 
+### D15. Serving design
+- **Decision:** FastAPI service in Docker. The request schema is generated from the model package, so the API validates exactly what the model was trained on; unknown fields and categories are rejected with 422. Endpoints are synchronous `def`, because scoring is CPU-bound. The model is loaded once at startup, and errors fail closed (503/500, never a default decision).
+- **Reason codes:** Each prediction returns its top 3 SHAP contributions. This supports the right to an explanation of automated decisions under the Data Protection Act 2019, and lets a reviewer see why a person was scored as they were.
+- **Data minimisation:** Gender is not an API field. Request inputs are not logged; only the request ID, decision and latency are.
+- **Rejected:** Building the schema at runtime from the package. A generated file is readable by reviewers, and lets requests be validated even if the model fails to load.
+
 ## Known limitations
 - **Gender can be inferred from other inputs.** Leaving gender out doesn't make the model gender-blind. During review, a gradient-boosting classifier predicted respondent gender from the 35 features with AUC about 0.92, mainly through relationship to household head, marital status and household decision-making. That check isn't part of the pipeline.
 - **Gaps are larger within subgroups.** At 0.50, recall is 0.49 for rural women and 0.74 for urban men (`reports/test_segment_metrics.csv`). The gender-and-location gap is larger than the gender gap alone.

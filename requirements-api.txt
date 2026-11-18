@@ -1,0 +1,11 @@
+# Runtime dependencies for the API container only (no plotting, no tests).
+# scikit-learn must match the version that trained models/model_package.joblib.
+numpy==2.5.5
+scipy==1.18.1
+pandas==3.1.1
+scikit-learn==1.9.1
+joblib==1.6.0
+shap==0.54.1
+fastapi==0.163.2
+uvicorn==0.54.0
+pydantic==2.13.5

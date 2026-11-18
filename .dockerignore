@@ -1,8 +1,7 @@
-.venv/
-.git/
-__pycache__/
-.pytest_cache/
-data/raw/
-notebooks/
-*.bak
-.env
+# Allow-list: the build context contains only what the image needs.
+*
+!requirements-api.txt
+!api/
+!models/model_package.joblib
+**/__pycache__
+**/*.pyc

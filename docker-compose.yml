@@ -1,0 +1,15 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: finaccess-bank-api:1.0.0
+    container_name: finaccess-bank-api
+    ports:
+      - "8000:8000"
+    environment:
+      LOG_LEVEL: info
+    read_only: true          # the service never writes to disk
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
